@@ -3,7 +3,8 @@
 # BPscope v 1.2
 # Author: hwmayer
 # Site: hwmayer.blogspot.com
-#
+# From: http://dangerousprototypes.com/forum/index.php?topic=976
+# More: http://dangerousprototypes.com/docs/Bus_Pirate:_Python_Oscilloscope
 # USAGE:
 # f - trigger on falling slope
 # r - trigger on rising slope
@@ -14,9 +15,6 @@
 # 0 - time scale-- (zoom in)
 # q - QUIT
 #
-
-
-
 import os, sys
 import Image
 import serial
