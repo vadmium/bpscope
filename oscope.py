@@ -28,7 +28,7 @@
 # 0 - time scale-- (zoom in)
 # q - QUIT
 #
-#"pygame" lib is needed to run this script.
+#"pygame" and "pyBusPirate" libraries are needed to run this script.
 #
 #To install in Ubuntu use this command:
 # sudo apt-get install python-pygame
