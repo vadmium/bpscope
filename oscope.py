@@ -60,43 +60,14 @@ DATA_RATE = 5720.0 #measures/second (estimated experimenticaly)
 
 DEFAULT_TIME_SCALE = RES_X / DATA_RATE #default time in seconds to make one window fill
 
-pygame.init() 
-
-bp = BBIO(BUS_PIRATE_DEV,115200)
-
-print "Entering binmode: ",
-if bp.BBmode():
-	print "OK."
-else:
-	print "failed."
-	sys.exit()
-	
-window = pygame.display.set_mode((RES_X, RES_Y)) 
-background = (0,0,0)
-line = (0,255,0)
-trig_color = (100,100,0)
-
-time_div = DEFAULT_TIME_DIV
-trigger_level = DEFAULT_TRIGGER_LEV
-trig_mode = DEFAULT_TRIGGER_MODE
-
-bp.port.write("\x15")
-while 1:
+def scan_plot(bp):
 	plot = {}
-	voltage = {}
-	maxv = 0
-	minv = 100
-	time_scale = DEFAULT_TIME_SCALE * time_div
-	prev_voltage = 0
-	measure = 0;
 	
 	if(trig_mode != NO_SYNC):
-		for k in range(1,2000):
+		voltage = read_voltage(bp)
+		for k in range(2,2000):
 			prev_voltage = voltage
-			measure = bp.response(2, True)
-			voltage = ord(measure[0]) << 8
-			voltage = voltage + ord(measure[1])
-			voltage = (voltage/1024.0) * 6.6
+			voltage = read_voltage(bp)
 			#rising slope
 			if((voltage >= trigger_level) and (prev_voltage < (voltage * TRIG_CAL)) and (trig_mode == RISING_SLOPE)):
 				break
@@ -107,14 +78,16 @@ while 1:
 		
 		for k in range(time_div - 1):
 			#ignoring (time_div-1) samples to achieve proper time resolution
-			bp.response(2, True)
-		measure = bp.response(2, True)
-		voltage = ord(measure[0]) << 8
-		voltage = voltage + ord(measure[1])
-		voltage = (voltage/1024.0) * 6.6
-		plot[i] = voltage	
+			read_voltage(bp)
+		plot[i] = read_voltage(bp)
 		
+	return plot
 
+def draw_plot():
+	maxv = 0
+	minv = 100
+	time_scale = DEFAULT_TIME_SCALE * time_div
+	
 	for i in range(1,RES_X):
 			if plot[i] > maxv:
 				maxv = plot[i]
@@ -147,7 +120,10 @@ while 1:
 	window.blit(text_min_voltage, text_minv_Rect)
 	window.blit(text_time_scale, text_time_scale_Rect)
 
-	pygame.display.flip() 
+def handle_events():
+	global time_div
+	global trig_mode
+	global trigger_level
 			
 	for event in pygame.event.get(): 
 		if event.type == pygame.QUIT: 
@@ -177,8 +153,39 @@ while 1:
 				print "Trigger levelL: %f" % trigger_level
 			elif event.key == pygame.K_q:
 				sys.exit(0)
-			
 
+def read_voltage(bp):
+	measure = bp.response(2, True)
+	voltage = ord(measure[0]) << 8
+	voltage = voltage + ord(measure[1])
+	return (voltage/1024.0) * 6.6
+
+pygame.init() 
+
+bp = BBIO(BUS_PIRATE_DEV,115200)
+
+print "Entering binmode: ",
+if bp.BBmode():
+	print "OK."
+else:
+	print "failed."
+	sys.exit()
+	
+window = pygame.display.set_mode((RES_X, RES_Y)) 
+background = (0,0,0)
+line = (0,255,0)
+trig_color = (100,100,0)
+
+time_div = DEFAULT_TIME_DIV
+trigger_level = DEFAULT_TRIGGER_LEV
+trig_mode = DEFAULT_TRIGGER_MODE
+
+bp.port.write("\x15")
+while 1:
+	plot = scan_plot(bp)
+	draw_plot()
+	pygame.display.flip() 
+	handle_events()
 	window.fill(background)
 
 #END
