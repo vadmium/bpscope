@@ -155,14 +155,55 @@ def handle_events():
 				sys.exit(0)
 
 def read_voltage(bp):
+	if version and version < (5, 9):
+		bp.port.write(byte(VOLTAGE))
 	measure = bp.response(2, True)
 	voltage = ord(measure[0]) << 8
 	voltage = voltage + ord(measure[1])
 	return (voltage/1024.0) * 6.6
 
+# Turn a byte value into an unambiguous byte (not unicode) string
+byte = chr
+
 pygame.init() 
 
 bp = BBIO(BUS_PIRATE_DEV,115200)
+
+RESET = 0x0F
+VOLTAGE = 0x14
+VOLTAGE_CONT = 0x15
+
+try:
+	# Probe for firmware version
+	if not bp.BBmode():
+		raise EnvironmentError("BBIO.BBmode failed")
+	bp.port.write(byte(RESET))
+	bp.timeout()
+	if not bp.response():
+		raise EnvironmentError("Bus Pirate reset failed")
+	banner = bp.port.read(bp.port.inWaiting())
+	
+	prefix = b"Firmware v"
+	try:
+		pos = banner.rindex(prefix) + len(prefix)
+		end = banner.index(".", pos)
+		major = int(banner[pos:end])
+		
+		pos = end + 1
+		end = pos
+		while end < len(banner) and banner[end].isdigit():
+			end += 1
+		minor = int(banner[pos:end])
+	
+	except ValueError:
+		raise EnvironmentError("Could not parse firmware version")
+	
+	version = (major, minor)
+	print "Firmware version: {0}.{1}".format(*version)
+
+except EnvironmentError:
+	sys.excepthook(*sys.exc_info())
+	version = None
 
 print "Entering binmode: ",
 if not bp.BBmode():
@@ -180,7 +221,8 @@ try:
 	trigger_level = DEFAULT_TRIGGER_LEV
 	trig_mode = DEFAULT_TRIGGER_MODE
 	
-	bp.port.write("\x15")
+	if not version or version >= (5, 9):
+		bp.port.write(byte(VOLTAGE_CONT))
 	while 1:
 		plot = scan_plot(bp)
 		draw_plot()
