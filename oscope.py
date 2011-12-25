@@ -32,14 +32,10 @@
 #
 #To install in Ubuntu use this command:
 # sudo apt-get install python-pygame
-import os, sys
-import Image
-import serial
+import sys
 import pygame
-import time
 
-from pyBusPirateLite.UART import *
-from pyBusPirateLite.BitBang import *
+from pyBusPirateLite.BitBang import BBIO
 
 NO_SYNC = 0
 RISING_SLOPE = 1
@@ -66,7 +62,7 @@ DEFAULT_TIME_SCALE = RES_X / DATA_RATE #default time in seconds to make one wind
 
 pygame.init() 
 
-bp = UART(BUS_PIRATE_DEV,115200)
+bp = BBIO(BUS_PIRATE_DEV,115200)
 
 print "Entering binmode: ",
 if bp.BBmode():
