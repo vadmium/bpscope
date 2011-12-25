@@ -165,28 +165,31 @@ pygame.init()
 bp = BBIO(BUS_PIRATE_DEV,115200)
 
 print "Entering binmode: ",
-if bp.BBmode():
-	print "OK."
-else:
+if not bp.BBmode():
 	print "failed."
 	sys.exit()
+try:
+	print "OK."
+		
+	window = pygame.display.set_mode((RES_X, RES_Y)) 
+	background = (0,0,0)
+	line = (0,255,0)
+	trig_color = (100,100,0)
 	
-window = pygame.display.set_mode((RES_X, RES_Y)) 
-background = (0,0,0)
-line = (0,255,0)
-trig_color = (100,100,0)
+	time_div = DEFAULT_TIME_DIV
+	trigger_level = DEFAULT_TRIGGER_LEV
+	trig_mode = DEFAULT_TRIGGER_MODE
+	
+	bp.port.write("\x15")
+	while 1:
+		plot = scan_plot(bp)
+		draw_plot()
+		pygame.display.flip() 
+		handle_events()
+		window.fill(background)
 
-time_div = DEFAULT_TIME_DIV
-trigger_level = DEFAULT_TRIGGER_LEV
-trig_mode = DEFAULT_TRIGGER_MODE
-
-bp.port.write("\x15")
-while 1:
-	plot = scan_plot(bp)
-	draw_plot()
-	pygame.display.flip() 
-	handle_events()
-	window.fill(background)
+finally:
+	bp.resetBP()
 
 #END
 
