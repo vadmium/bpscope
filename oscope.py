@@ -60,8 +60,16 @@ DATA_RATE = 5720.0 #measures/second (estimated experimenticaly)
 
 DEFAULT_TIME_SCALE = RES_X / DATA_RATE #default time in seconds to make one window fill
 
-def scan_plot(bp):
+def scan_plot(bp, window):
+	on_the_fly = not cont_support
 	plot = {}
+	font = pygame.font.Font(None, 19)
+	
+	if on_the_fly:
+		prev_trig = None
+		maxv = None
+		minv = None
+		prev_time_div = None
 	
 	if(trig_mode != NO_SYNC):
 		voltage = read_voltage(bp)
@@ -81,44 +89,83 @@ def scan_plot(bp):
 			read_voltage(bp)
 		plot[i] = read_voltage(bp)
 		
-	return plot
-
-def draw_plot():
-	maxv = 0
-	minv = 100
-	time_scale = DEFAULT_TIME_SCALE * time_div
-	
-	for i in range(1,RES_X):
-			if plot[i] > maxv:
-				maxv = plot[i]
-			if plot[i] < minv:
-				minv = plot[i]
-				
-			y = (RES_Y) - plot[i]*(RES_Y/MAX_VOLTAGE) - OFFSET
-			x = i
-			px = i-1;
-			py = (RES_Y) - plot[i-1]*(RES_Y/MAX_VOLTAGE) - OFFSET
-			pygame.draw.line(window, line, (px, py), (x, y))	
-			trig_y = RES_Y - trigger_level * (RES_Y/MAX_VOLTAGE)
-			pygame.draw.line(window, trig_color, (0, trig_y), (RES_X, trig_y))
+		if not on_the_fly:
+			continue
 		
-	##GUI)
-	font = pygame.font.Font(None, 19)
-	text_max_voltage = font.render("Max: %f V" % maxv, 1, (255, 255, 255))
-	text_min_voltage = font.render("Min: %f V" % minv, 1, (255, 255, 255))
-	text_time_scale = font.render("Timescale: %f s" % time_scale, 1, (255, 255, 255))
-	text_maxv_Rect = text_max_voltage.get_rect()
-	text_minv_Rect = text_min_voltage.get_rect()
-	text_time_scale_Rect = text_time_scale.get_rect()
-	text_maxv_Rect.x = 10
-	text_maxv_Rect.y = 10
-	text_minv_Rect.x = 10 
-	text_minv_Rect.y = 30
-	text_time_scale_Rect.x = 10
-	text_time_scale_Rect.y = 50
-	window.blit(text_max_voltage, text_maxv_Rect)
-	window.blit(text_min_voltage, text_minv_Rect)
-	window.blit(text_time_scale, text_time_scale_Rect)
+		if(i!=0):
+			plot_update(window, i, plot[i], plot[i-1])
+		
+		if prev_trig is None or trigger_level != prev_trig:
+			if prev_trig is not None:
+				draw_trig(window, prev_trig, background)
+			draw_trig(window)
+			prev_trig = trigger_level
+		
+		if maxv is None or plot[i] > maxv:
+			if maxv is not None:
+				window.fill(background,prev_maxv_Rect)
+			maxv = plot[i]
+			prev_maxv_Rect = draw_maxv(window, font, maxv)
+		if minv is None or plot[i] < minv:
+			if minv is not None:
+				window.fill(background,prev_minv_Rect)
+			minv = plot[i]
+			prev_minv_Rect = draw_minv(window, font, minv)
+		
+		if prev_time_div is None or time_div != prev_time_div:
+			if prev_time_div is not None:
+				window.fill(background,prev_time_Rect)
+			prev_time_Rect = draw_time(window, font)
+			prev_time_div = time_div
+		
+		pygame.display.flip() 
+		handle_events()
+	
+	if not on_the_fly:
+		draw_plot(window, font, plot)
+		pygame.display.flip()
+		handle_events()
+
+def draw_plot(window, font, plot):
+	for i in range(1,RES_X):
+			plot_update(window, i, plot[i], plot[i-1])
+	
+	draw_trig(window)
+	draw_maxv(window, font, max(plot.values()))
+	draw_minv(window, font, min(plot.values()))
+	draw_time(window, font)
+
+def plot_update(window, i, voltage, prev_voltage):
+	y = (RES_Y) - voltage*(RES_Y/MAX_VOLTAGE) - OFFSET
+	x = i
+	px = i-1;
+	py = (RES_Y) - prev_voltage*(RES_Y/MAX_VOLTAGE) - OFFSET
+	pygame.draw.line(window, line, (px, py), (x, y))	
+
+def draw_trig(window, value=None, color=None):
+	if value is None:
+		value = trigger_level
+	if color is None:
+		color = trig_color
+	trig_y = RES_Y - value * (RES_Y/MAX_VOLTAGE)
+	pygame.draw.line(window, color, (0, trig_y), (RES_X, trig_y))
+
+def draw_maxv(window, font, maxv):
+	return draw_text(window, font, "Max: %f V" % maxv, 10)
+def draw_minv(window, font, minv):
+	return draw_text(window, font, "Min: %f V" % minv, 30)
+
+def draw_time(window, font):
+	time_scale = DEFAULT_TIME_SCALE * time_div
+	return draw_text(window, font, "Timescale: %f s" % time_scale, 50)
+
+def draw_text(window, font, text, y):
+	text = font.render(text, 1, (255, 255, 255))
+	Rect = text.get_rect()
+	Rect.x = 10
+	Rect.y = y
+	window.blit(text, Rect)
+	return Rect
 
 def handle_events():
 	global time_div
@@ -155,7 +202,7 @@ def handle_events():
 				sys.exit(0)
 
 def read_voltage(bp):
-	if version and version < (5, 9):
+	if not cont_support:
 		bp.port.write(byte(VOLTAGE))
 	measure = bp.response(2, True)
 	voltage = ord(measure[0]) << 8
@@ -221,13 +268,12 @@ try:
 	trigger_level = DEFAULT_TRIGGER_LEV
 	trig_mode = DEFAULT_TRIGGER_MODE
 	
-	if not version or version >= (5, 9):
+	cont_support = not version or version >= (5, 9)
+	if cont_support:
 		bp.port.write(byte(VOLTAGE_CONT))
+	
 	while 1:
-		plot = scan_plot(bp)
-		draw_plot()
-		pygame.display.flip() 
-		handle_events()
+		scan_plot(bp, window)
 		window.fill(background)
 
 finally:
