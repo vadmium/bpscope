@@ -36,6 +36,7 @@ import sys
 import pygame
 
 from pyBusPirateLite.BitBang import BBIO
+from contextlib import closing
 
 NO_SYNC = 0
 RISING_SLOPE = 1
@@ -61,7 +62,7 @@ DATA_RATE = 5720.0 #measures/second (estimated experimenticaly)
 DEFAULT_TIME_SCALE = RES_X / DATA_RATE #default time in seconds to make one window fill
 
 def scan_plot(bp, window):
-	on_the_fly = not cont_support
+	on_the_fly = not bp.cont_support
 	plot = {}
 	font = pygame.font.Font(None, 19)
 	
@@ -72,10 +73,10 @@ def scan_plot(bp, window):
 		prev_time_div = None
 	
 	if(trig_mode != NO_SYNC):
-		voltage = read_voltage(bp)
+		voltage = bp.read()
 		for k in range(2,2000):
 			prev_voltage = voltage
-			voltage = read_voltage(bp)
+			voltage = bp.read()
 			#rising slope
 			if((voltage >= trigger_level) and (prev_voltage < (voltage * TRIG_CAL)) and (trig_mode == RISING_SLOPE)):
 				break
@@ -86,8 +87,8 @@ def scan_plot(bp, window):
 		
 		for k in range(time_div - 1):
 			#ignoring (time_div-1) samples to achieve proper time resolution
-			read_voltage(bp)
-		plot[i] = read_voltage(bp)
+			bp.read()
+		plot[i] = bp.read()
 		
 		if not on_the_fly:
 			continue
@@ -201,13 +202,39 @@ def handle_events():
 			elif event.key == pygame.K_q:
 				sys.exit(0)
 
-def read_voltage(bp):
-	if not cont_support:
-		bp.port.write(byte(VOLTAGE))
-	measure = bp.response(2, True)
-	voltage = ord(measure[0]) << 8
-	voltage = voltage + ord(measure[1])
-	return (voltage/1024.0) * 6.6
+class VoltageProbe(object):
+	# Buffering more than 13 bytes causes the Bus Pirate to miss buffered
+	# commands, and interpret commands incorrectly, until reset.
+	WRITE_LIMIT = 13
+	
+	def __init__(self, bp):
+		self.bp = bp
+		
+		self.cont_support = not version or version >= (5, 9)
+		if self.cont_support:
+			self.bp.port.write(byte(VOLTAGE_CONT))
+		else:
+			self.pending = self.WRITE_LIMIT
+			self.bp.port.write(byte(VOLTAGE) * self.pending)
+	
+	def read(self):
+		measure = self.bp.response(2, True)
+		voltage = ord(measure[0]) << 8
+		voltage = voltage + ord(measure[1])
+		voltage = (voltage/1024.0) * 6.6
+		
+		if not self.cont_support:
+			self.bp.port.write(byte(VOLTAGE))
+		
+		return voltage
+	
+	def close(self):
+		if not self.cont_support:
+			self.bp.response(self.pending * 2)
+			self.pending = 0
+	
+	def __del__(self):
+		self.close()
 
 # Turn a byte value into an unambiguous byte (not unicode) string
 byte = chr
@@ -268,13 +295,10 @@ try:
 	trigger_level = DEFAULT_TRIGGER_LEV
 	trig_mode = DEFAULT_TRIGGER_MODE
 	
-	cont_support = not version or version >= (5, 9)
-	if cont_support:
-		bp.port.write(byte(VOLTAGE_CONT))
-	
-	while 1:
-		scan_plot(bp, window)
-		window.fill(background)
+	with closing(VoltageProbe(bp)) as voltage:
+		while 1:
+			scan_plot(voltage, window)
+			window.fill(background)
 
 finally:
 	bp.resetBP()
